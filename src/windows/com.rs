@@ -3,6 +3,7 @@ use std::os::windows::prelude::*;
 use std::time::Duration;
 use std::{io, ptr};
 
+
 use winapi::shared::minwindef::*;
 use winapi::um::commapi::*;
 use winapi::um::fileapi::*;
@@ -10,7 +11,7 @@ use winapi::um::handleapi::*;
 use winapi::um::processthreadsapi::GetCurrentProcess;
 use winapi::um::winbase::*;
 use winapi::um::winnt::{
-    DUPLICATE_SAME_ACCESS, FILE_ATTRIBUTE_NORMAL, GENERIC_READ, GENERIC_WRITE, HANDLE,
+    DUPLICATE_SAME_ACCESS, FILE_ATTRIBUTE_NORMAL, GENERIC_READ, GENERIC_WRITE, HANDLE, MAXDWORD
 };
 
 use crate::windows::dcb;
@@ -239,10 +240,19 @@ impl SerialPort for COMPort {
     fn set_timeout(&mut self, timeout: Duration) -> Result<()> {
         let milliseconds = timeout.as_secs() * 1000 + timeout.subsec_nanos() as u64 / 1_000_000;
 
+        // populate COMMTIMEOUTS struct
+        // https://docs.microsoft.com/en-us/windows/win32/devio/time-outs
+        // https://docs.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-commtimeouts
         let mut timeouts = COMMTIMEOUTS {
-            ReadIntervalTimeout: 0,
-            ReadTotalTimeoutMultiplier: 0,
+            // return as soon as bytes become available (like POSIX would) and
+            // block up to given duration otherwise
+            // https://docs.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-commtimeouts#remarks
+            ReadIntervalTimeout: MAXDWORD,
+            ReadTotalTimeoutMultiplier: MAXDWORD,
             ReadTotalTimeoutConstant: milliseconds as DWORD,
+            // block without timeout until write is complete
+            // MAXDWORD is *not* a reserved WriteTotalTimeoutMultiplier
+            // value, i.e., setting it incurs a long write timeout
             WriteTotalTimeoutMultiplier: 0,
             WriteTotalTimeoutConstant: 0,
         };
